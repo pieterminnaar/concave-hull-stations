@@ -10,24 +10,41 @@ import com.vividsolutions.jts.operation.buffer._
 import org.postgis.{Point => PGPoint, LinearRing, Polygon => PGPolygon, PGgeometry} 
 import java.sql.DriverManager
 
+//run
+//./bin/spark-submit --class net.stedin.InsertPostGis --master local[2] /Users/pieterm/dev/concave-hull-sbt/target/scala-2.10/concave_hull-assembly-1.0.jar
+
 object InsertPostGis {
+  val gf = new GeometryFactory()
+
+  def createPointGeometry(x: Int, y: Int) = {
+     val crd = new Coordinate(x, y)
+     gf.createPoint(crd).asInstanceOf[Geometry]
+  }
+
+  def createAreaGeometry(coords: Array[Geometry]): Geometry = {
+    val gc = gf.createGeometryCollection(coords)
+    val ch = new ConcaveHull(gc, 50)
+    var geom: Geometry = null
+    try {
+          geom = ch.getConcaveHull()
+    } catch {
+      case e: Exception => geom = gc
+    }
+    val bo = new BufferOp(geom)
+    bo.getResultGeometry(5)
+  }
+
   def main(args: Array[String]) {
-    val gf = new GeometryFactory()
     val conf = new SparkConf().setAppName("Concave Hull")
     val sc = new SparkContext(conf)
-    val inputRDD = sc.textFile("/Users/pieterm/dev/concavehull/leveringspunt_coords.txt")
-    val valsRDD = inputRDD.filter(l => l.indexOf(",") != 0).map(l => l.split(","))
+    val inputRDD = sc.textFile("/Users/pieterm/dev/concave-hull-sbt/data/leveringspunt_coords.txt")
+    val valsRDD = inputRDD.filter(l => l.indexOf(",,") < 0).map(l => l.split(","))
     val keysRDD = valsRDD.map(l => (l(0).toInt, l))
-    val keysXyRDD = keysRDD.mapValues(l => (l(3).trim.toInt, l(4).trim.toInt))
-    val keysCrdsRDD = keysXyRDD.mapValues(t => new Coordinate(t._1, t._2))
-    val keysGeomsRDD = keysCrdsRDD.mapValues(crd => gf.createPoint(crd).asInstanceOf[Geometry])
-    val groups = keysGeomsRDD.groupByKey()
-    val groupsArrs = groups.mapValues(crds => crds.toArray)
-    val groupsGC = groupsArrs.mapValues(crdArr => gf.createGeometryCollection(crdArr))
-    val groupsCH = groupsGC.mapValues(gc => new ConcaveHull(gc, 50))
-    val groupsBO = groupsCH.mapValues(ch => new BufferOp(ch.getConcaveHull))
-    val groupsBuf = groupsBO.mapValues(bo => bo.getResultGeometry(5))
-    val groupsCrds = groupsBuf.mapValues(crds => crds.getCoordinates())
+    val keysCrdsRDD = keysRDD.mapValues(l => createPointGeometry(l(1).trim.toInt, l(2).trim.toInt))
+    val groups = keysCrdsRDD.groupByKey()
+    val groupsArrs = groups.mapValues(crds => createAreaGeometry(crds.toArray))
+    val groupsPolys = groupsArrs.filter(geom => geom._2.getNumGeometries() == 1)
+    val groupsCrds = groupsPolys.mapValues(crds => crds.getCoordinates())
     val groupsPnts = groupsCrds.mapValues(crds => crds.map(crd => new PGPoint(crd.x, crd.y)))
     val groupsLR = groupsPnts.mapValues(pnts => new LinearRing(pnts))
     val groupsPols = groupsLR.mapValues(lrs => new PGPolygon(Array(lrs)))
@@ -38,14 +55,15 @@ object InsertPostGis {
 	val conn = DriverManager.getConnection(url, "postgres", "manager")
 	conn.asInstanceOf[org.postgresql.PGConnection].addDataType("geometry", Class.forName("org.postgis.PGgeometry"))
 	val s = conn.prepareStatement("INSERT INTO station_areas (station_id, area_geom) VALUES (?, ?)")
-	//val s = conn.prepareStatement("INSERT INTO station_areas (station_id, area_geom) VALUES (?)")
 	part.foreach(gc => {
             s.setInt(1, gc._1)
             s.setObject(2, gc._2)
-            s.executeUpdate()
-            //println(gc._1)
+            try {
+              s.executeUpdate() 
+            } catch {
+              case e: Exception => println("Insert failed: ", gc._1)
+	    }
 	})
-    //conn.commit()
 	s.close()
 	conn.close()
       }
