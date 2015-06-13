@@ -7,6 +7,8 @@ import org.opensphere.geometry.algorithm._
 import com.vividsolutions.jts.geom._
 import collection.JavaConversions._
 import com.vividsolutions.jts.operation.buffer._
+import org.postgis.{Point => PGPoint, LinearRing, Polygon => PGPolygon, PGgeometry} 
+import java.sql.DriverManager
 
 object InsertPostGis {
   def main(args: Array[String]) {
@@ -26,7 +28,28 @@ object InsertPostGis {
     val groupsBO = groupsCH.mapValues(ch => new BufferOp(ch.getConcaveHull))
     val groupsBuf = groupsBO.mapValues(bo => bo.getResultGeometry(5))
     val groupsCrds = groupsBuf.mapValues(crds => crds.getCoordinates())
-    groupsCrds.foreach(gc => println(gc))
+    val groupsPnts = groupsCrds.mapValues(crds => crds.map(crd => new PGPoint(crd.x, crd.y)))
+    val groupsLR = groupsPnts.mapValues(pnts => new LinearRing(pnts))
+    val groupsPols = groupsLR.mapValues(lrs => new PGPolygon(Array(lrs)))
+    val groupsPGeoms = groupsPols.mapValues(pol => new PGgeometry(pol))
+    groupsPGeoms.foreachPartition(part => {
+	Class.forName("org.postgresql.Driver") 
+	val url = "jdbc:postgresql://localhost:5432/stedin" 
+	val conn = DriverManager.getConnection(url, "postgres", "manager")
+	conn.asInstanceOf[org.postgresql.PGConnection].addDataType("geometry", Class.forName("org.postgis.PGgeometry"))
+	val s = conn.prepareStatement("INSERT INTO station_areas (station_id, area_geom) VALUES (?, ?)")
+	//val s = conn.prepareStatement("INSERT INTO station_areas (station_id, area_geom) VALUES (?)")
+	part.foreach(gc => {
+            s.setInt(1, gc._1)
+            s.setObject(2, gc._2)
+            s.executeUpdate()
+            //println(gc._1)
+	})
+    //conn.commit()
+	s.close()
+	conn.close()
+      }
+    )
     sc.stop()
   }
 }
