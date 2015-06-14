@@ -9,7 +9,7 @@ resolvers += "52 North" at "http://52north.org/maven/repo/releases"
 resolvers += "osgeo" at "http://download.osgeo.org/webdav/geotools"
 resolvers += "geotoolkit" at "http://maven.geotoolkit.org/"
 
-libraryDependencies += "org.apache.spark" %% "spark-core" % "1.3.1"
+libraryDependencies += "org.apache.spark" %% "spark-core" % "1.4.0"
 libraryDependencies += "org.postgis" % "postgis-jdbc" % "2.1.3"
 libraryDependencies += "org.postgresql" % "postgresql" % "9.4-1201-jdbc41"
 libraryDependencies += "com.vividsolutions" % "jts" % "1.13"

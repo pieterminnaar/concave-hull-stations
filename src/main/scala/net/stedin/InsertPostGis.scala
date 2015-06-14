@@ -11,8 +11,8 @@ import org.postgis.{Point => PGPoint, LinearRing, Polygon => PGPolygon, PGgeomet
 import java.sql.DriverManager
 
 //run
-//./bin/spark-submit --class net.stedin.InsertPostGis --master local[2] /Users/pieterm/dev/concave-hull-sbt/target/scala-2.10/concave_hull-assembly-1.0.jar
-
+/* ./bin/spark-submit --class net.stedin.InsertPostGis --master local[2] /Users/pieterm/dev/concave-hull-sbt/target/scala-2.10/concave_hull-assembly-1.0.jar jdbc:postgresql://localhost:5432/stedin postgres manager */
+/* Hostname	stedin.cleo3mrfvpnt.eu-west-1.rds.amazonaws.com */
 object InsertPostGis {
   val gf = new GeometryFactory()
 
@@ -35,6 +35,9 @@ object InsertPostGis {
   }
 
   def main(args: Array[String]) {
+    val url = args(0)
+    val user = args(1)
+    val password = args(2)
     val conf = new SparkConf().setAppName("Concave Hull")
     val sc = new SparkContext(conf)
     val inputRDD = sc.textFile("/Users/pieterm/dev/concave-hull-sbt/data/leveringspunt_coords.txt")
@@ -51,8 +54,8 @@ object InsertPostGis {
     val groupsPGeoms = groupsPols.mapValues(pol => new PGgeometry(pol))
     groupsPGeoms.foreachPartition(part => {
 	Class.forName("org.postgresql.Driver") 
-	val url = "jdbc:postgresql://localhost:5432/stedin" 
-	val conn = DriverManager.getConnection(url, "postgres", "manager")
+	/*val url = "jdbc:postgresql://localhost:5432/stedin" */
+	val conn = DriverManager.getConnection(url, user, password)
 	conn.asInstanceOf[org.postgresql.PGConnection].addDataType("geometry", Class.forName("org.postgis.PGgeometry"))
 	val s = conn.prepareStatement("INSERT INTO station_areas (station_id, area_geom) VALUES (?, ?)")
 	part.foreach(gc => {
