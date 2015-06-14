@@ -12,6 +12,7 @@ import java.sql.DriverManager
 
 //run
 /* ./bin/spark-submit --class net.stedin.InsertPostGis --master local[2] /Users/pieterm/dev/concave-hull-sbt/target/scala-2.10/concave_hull-assembly-1.0.jar jdbc:postgresql://localhost:5432/stedin postgres manager */
+/* ./bin/spark-submit --class net.stedin.InsertPostGis --master local[2] /Users/pieterm/dev/concave-hull-sbt/target/scala-2.10/concave_hull-assembly-1.0.jar jdbc:postgresql://stedin.cleo3mrfvpnt.eu-west-1.rds.amazonaws.com:5432/stedin sysadmin password */
 /* Hostname	stedin.cleo3mrfvpnt.eu-west-1.rds.amazonaws.com */
 object InsertPostGis {
   val gf = new GeometryFactory()
