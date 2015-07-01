@@ -14,6 +14,8 @@ libraryDependencies += "org.postgis" % "postgis-jdbc" % "2.1.3"
 libraryDependencies += "org.postgresql" % "postgresql" % "9.4-1201-jdbc41"
 libraryDependencies += "com.vividsolutions" % "jts" % "1.13"
 libraryDependencies += "org.geotools" % "gt-postgis" % "2.7.4"
+libraryDependencies += "com.amazonaws" % "aws-java-sdk" % "1.10.0"
+
 
 assemblyMergeStrategy in assembly := {
   case PathList("META-INF", xs @ _*) => MergeStrategy.discard

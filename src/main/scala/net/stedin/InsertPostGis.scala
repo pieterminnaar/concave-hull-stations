@@ -43,7 +43,7 @@ object InsertPostGis {
     val sc = new SparkContext(conf)
     val inputRDD = sc.textFile("/Users/pieterm/dev/concave-hull-sbt/data/leveringspunt_coords.txt")
     val valsRDD = inputRDD.filter(l => l.indexOf(",,") < 0).map(l => l.split(","))
-    val keysRDD = valsRDD.map(l => (l(0).toInt, l))
+    val keysRDD = valsRDD.keyBy({_(0).toInt})
     val keysCrdsRDD = keysRDD.mapValues(l => createPointGeometry(l(1).trim.toInt, l(2).trim.toInt))
     val groups = keysCrdsRDD.groupByKey()
     val groupsArrs = groups.mapValues(crds => createAreaGeometry(crds.toArray))
