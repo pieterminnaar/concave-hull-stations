@@ -30,9 +30,11 @@ object FeederGenerator {
     txRDD.map(l => Transformer(l(0), l(1), l(2)))
   }
 
-  def customers(sc: SparkContext, logPath: String): RDD[Customer] = {
+  def transformerCustomerCounts(sc: SparkContext, logPath: String): RDD[TransformerCustomerCount] = {
     val custTxt = sc.textFile(logPath + "/ProductionCustomersModel.txt")
-    custTxt.map(l => Customer.parseCustomer(l))
+    val trafoRDD = custTxt.map(l => l.slice(150, 169).replace("SP_", "").trim())
+    val trafos = sc.parallelize(trafoRDD.countByValue().toSeq)
+    trafos.map(tup => TransformerCustomerCount(tup._1, tup._2))
   }
 
   def switches(sc: SparkContext, logPath: String): RDD[Switch] = {
@@ -44,27 +46,41 @@ object FeederGenerator {
     switchLines.map(tup => Switch.parseSwitch(tup))
   }
 
+  def processResults(sc: SparkContext, 
+                     switches: RDD[Switch], 
+                     transformers: RDD[Transformer], 
+                     transCustCounts: RDD[TransformerCustomerCount]): Unit = {
+    val sqlContext = new org.apache.spark.sql.SQLContext(sc)
+    import sqlContext._
+    import sqlContext.implicits._
+    val dmsSwitches = switches.toDF()
+    dmsSwitches.registerTempTable("switches")
+    val dmsTransformers = transformers.toDF()
+    dmsTransformers.registerTempTable("trafos")
+    val dmsTrafoCustCounts = transCustCounts.toDF()
+    dmsTrafoCustCounts.registerTempTable("transformer_counts") 
+    val joined = sqlContext.sql("""
+       SELECT s.substation, s.feeder, 
+              count(distinct(t.stationId)) as stations, 
+              sum(c.customerCount) customers
+       FROM switches s
+       JOIN trafos t
+       ON s.id = t.switchId
+       JOIN transformer_counts c
+       ON c.trafoId = t.id
+       GROUP BY s.substation, s.feeder""")
+    joined.rdd.saveAsTextFile("/Users/pieterm/dev/concave_hull/feeders")
+  }
+
   def main(args: Array[String]) {
     val logPath = args(0)
     val conf = new SparkConf().setAppName("Feeders")
     val sc = new SparkContext(conf)
-    val sqlContext = new org.apache.spark.sql.SQLContext(sc)
-    import sqlContext._
-    import sqlContext.implicits._
-    val dmsSwitches = switches(sc, logPath).toDF()
-    dmsSwitches.registerTempTable("switches")
-    val trafos = transformers(sc, logPath).toDF()
-    trafos.registerTempTable("trafos")
-    val dmsCustomers = customers(sc, logPath).toDF()
-    dmsCustomers.registerTempTable("customers") 
-    val joined = sqlContext.sql("""
-       SELECT s.substation, s.feeder, t.id, c.x, c.y
-       FROM switches s
-       JOIN trafos t
-       ON s.id = t.switchId
-       JOIN customers c
-       ON c.trafoId = t.id""")
-    joined.collect().take(100).foreach(l => {println(l)})
+    val dmsSwitches = switches(sc, logPath)
+    val trafos = transformers(sc, logPath)
+    val dmsCustomers = transformerCustomerCounts(sc, logPath)
+    processResults(sc, dmsSwitches, trafos, dmsCustomers)
+    //TODO: do group by query
     sc.stop()
   }
 }
