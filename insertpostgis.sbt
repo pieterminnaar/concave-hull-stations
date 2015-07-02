@@ -15,6 +15,7 @@ libraryDependencies += "org.postgresql" % "postgresql" % "9.4-1201-jdbc41"
 libraryDependencies += "com.vividsolutions" % "jts" % "1.13"
 libraryDependencies += "org.geotools" % "gt-postgis" % "2.7.4"
 libraryDependencies += "com.amazonaws" % "aws-java-sdk" % "1.10.0"
+libraryDependencies += "org.apache.spark" % "spark-sql_2.10" % "1.4.0"
 
 
 assemblyMergeStrategy in assembly := {

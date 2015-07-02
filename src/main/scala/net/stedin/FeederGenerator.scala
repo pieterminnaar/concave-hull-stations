@@ -10,7 +10,9 @@ import com.vividsolutions.jts.operation.buffer._
 import org.postgis.{Point => PGPoint, LinearRing, Polygon => PGPolygon, PGgeometry} 
 import java.sql.DriverManager
 import java.nio.file.Paths
-import net.stedin.dms.logparser.Switch
+import net.stedin.dms.logparser._
+import org.apache.spark.rdd.RDD
+//import org.apache.spark.sql.SQLContext
 
 //run
 /* ./bin/spark-submit --class net.stedin.FeederGenerator --master local[2] /Users/pieterm/dev/concave-hull-sbt/target/scala-2.10/concave_hull-assembly-1.0.jar /Users/pieterm/dev/concave-hull-sbt/data */
@@ -22,17 +24,47 @@ object FeederGenerator {
     (fileName, comb._2)
   }
 
-  def main(args: Array[String]) {
-    val logPath = args(0)
-    val conf = new SparkConf().setAppName("Feeders")
-    val sc = new SparkContext(conf)
+  def transformers(sc: SparkContext, logPath: String): RDD[Transformer] = {
+    val txTxt = sc.textFile(logPath + "/trafo_schakelaar.txt")
+    val txRDD = txTxt.map(l => l.split("\t"))
+    txRDD.map(l => Transformer(l(0), l(1), l(2)))
+  }
+
+  def customers(sc: SparkContext, logPath: String): RDD[Customer] = {
+    val custTxt = sc.textFile(logPath + "/ProductionCustomersModel.txt")
+    custTxt.map(l => Customer.parseCustomer(l))
+  }
+
+  def switches(sc: SparkContext, logPath: String): RDD[Switch] = {
     val logs = sc.wholeTextFiles(logPath + "/*.log")   
     val feederLogs = logs.map({fileNameMapper(_)})
     val feederLogLines = feederLogs.flatMap(tup => tup._2.split("\n").map(l => (tup._1, l)))
     val dpfLogLines = feederLogLines.filter(tup => tup._2.contains("-I-,DPF190,,DPF results"))
     val switchLines = dpfLogLines.filter(tup => tup._2.contains("ternal Switch:"))
-    val switches = switchLines.map(tup => Switch.parseSwitch(tup))
-    switches.take(100).foreach(l => {println(l)})
+    switchLines.map(tup => Switch.parseSwitch(tup))
+  }
+
+  def main(args: Array[String]) {
+    val logPath = args(0)
+    val conf = new SparkConf().setAppName("Feeders")
+    val sc = new SparkContext(conf)
+    val sqlContext = new org.apache.spark.sql.SQLContext(sc)
+    import sqlContext._
+    import sqlContext.implicits._
+    val dmsSwitches = switches(sc, logPath).toDF()
+    dmsSwitches.registerTempTable("switches")
+    val trafos = transformers(sc, logPath).toDF()
+    trafos.registerTempTable("trafos")
+    val dmsCustomers = customers(sc, logPath).toDF()
+    dmsCustomers.registerTempTable("customers") 
+    val joined = sqlContext.sql("""
+       SELECT s.substation, s.feeder, t.id, c.x, c.y
+       FROM switches s
+       JOIN trafos t
+       ON s.id = t.switchId
+       JOIN customers c
+       ON c.trafoId = t.id""")
+    joined.collect().take(100).foreach(l => {println(l)})
     sc.stop()
   }
 }
